@@ -4,8 +4,15 @@
 import { useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
-
 type Msg = { role: "user" | "assistant"; content: string };
+
+type DebugPayload = {
+  prompt: string;
+  sessionId: string;
+  useOverrides: boolean;
+  attrs: Record<string, string>;
+  _debug_promptDefaultsWhenOff: Record<string, string> | null;
+};
 
 const DEFAULTS = {
   xBrand: process.env.NEXT_PUBLIC_DEFAULT_X_BRAND ?? "DEMO-DEMO",
@@ -20,16 +27,20 @@ export default function Home() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-// Generate sessionId only on the client to avoid SSR hydration mismatches
-  const [sessionId, setSessionId] = useState<string | null>(null);
 
+  // Session id persisted per tab
+  const [sessionId, setSessionId] = useState<string>("");
+
+  // ---- KEEP THIS EXACTLY (your requested snippet) ----
+  // -- line before --
   useEffect(() => {
     try {
       // Persist within a tab so refreshes keep the same id
       const KEY = "bra_session_id";
-      const existing = typeof window !== "undefined"
-        ? window.sessionStorage.getItem(KEY)
-        : null;
+      const existing =
+        typeof window !== "undefined"
+          ? window.sessionStorage.getItem(KEY)
+          : null;
       if (existing) {
         setSessionId(existing);
       } else {
@@ -44,7 +55,7 @@ export default function Home() {
       setSessionId(uuidv4());
     }
   }, []);
-
+  // -- line after --
 
   // Settings state (collapsed section)
   const [useOverrides, setUseOverrides] = useState(true);
@@ -62,7 +73,7 @@ export default function Home() {
   const [goodwillSizeGb, setSize] = useState<number>(2);
   const [goodwillReason, setReason] = useState("boosterOrPassRefund");
 
-  const [lastPayload, setLastPayload] = useState<any>(null);
+  const [lastPayload, setLastPayload] = useState<DebugPayload | null>(null);
 
   const chatRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -103,8 +114,7 @@ export default function Home() {
   }
 
   async function send(prompt: string) {
-    if (!sessionId) return; // still hydrating / generating id on client
-    if (!prompt.trim() || isStreaming) return;
+    if (!prompt.trim() || isStreaming || !sessionId) return;
 
     // add user message
     setMessages((m) => [...m, { role: "user", content: prompt }]);
@@ -120,19 +130,18 @@ export default function Home() {
     // Build baseline prompt attrs when overrides are OFF
     const baselinePromptAttrs = !useOverrides
       ? {
-          xBrand: process.env.NEXT_PUBLIC_DEFAULT_X_BRAND ?? "DEMO-DEMO",
-          xChannel: process.env.NEXT_PUBLIC_DEFAULT_X_CHANNEL ?? "AGENT_TOOL",
-          lang: process.env.NEXT_PUBLIC_DEFAULT_LANG ?? "en",
+          xBrand: DEFAULTS.xBrand,
+          xChannel: DEFAULTS.xChannel,
+          lang: DEFAULTS.lang,
         }
-      : undefined;
+      : null;
 
-    const payload = {
+    const payload: DebugPayload = {
       prompt,
       sessionId,
       useOverrides,
       attrs,
-      // Debug-only field so you can see both in the UI
-      _debug_promptDefaultsWhenOff: baselinePromptAttrs || null,
+      _debug_promptDefaultsWhenOff: baselinePromptAttrs,
     };
     setLastPayload(payload);
 
@@ -142,7 +151,7 @@ export default function Home() {
         method: "POST",
         body: JSON.stringify({
           prompt,
-          sessionId: sessionId!,
+          sessionId,
           useOverrides,
           attrs,
         }),
@@ -162,13 +171,11 @@ export default function Home() {
         });
       }
       // -- line after --
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
       setMessages((m) => {
         const copy = [...m];
-        copy[idx] = {
-          role: "assistant",
-          content: `⚠️ Error: ${e?.message || String(e)}`,
-        };
+        copy[idx] = { role: "assistant", content: `⚠️ Error: ${msg}` };
         return copy;
       });
     } finally {
@@ -200,7 +207,7 @@ export default function Home() {
                 checked={useOverrides}
                 onChange={(e) => setUseOverrides(e.target.checked)}
               />
-              <span>Use these overrides in calls (sessionAttributes & promptSessionAttributes)</span>
+              <span>Use these overrides in calls (sessionAttributes &amp; promptSessionAttributes)</span>
             </label>
 
             <hr className="my-3" />
@@ -352,19 +359,17 @@ export default function Home() {
           <summary className="cursor-pointer list-none px-4 py-2 text-sm font-medium">
             🧪 Debug — payload being sent
           </summary>
-          {sessionId && (
-            <pre className="px-4 py-3 text-xs overflow-x-auto">
-              {JSON.stringify(
-                {
-                  sessionId,
-                  useOverrides,
-                  payload: lastPayload,
-                },
-                null,
-                2
-              )}
-            </pre>
-          )}
+          <pre className="px-4 py-3 text-xs overflow-x-auto">
+            {JSON.stringify(
+              {
+                sessionId,
+                useOverrides,
+                payload: lastPayload,
+              },
+              null,
+              2
+            )}
+          </pre>
         </details>
 
         {/* Chat box */}
@@ -405,7 +410,7 @@ export default function Home() {
           <button
             type="submit"
             className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
-            disabled={isStreaming || !input.trim()}
+            disabled={isStreaming || !input.trim() || !sessionId}
           >
             Send
           </button>
