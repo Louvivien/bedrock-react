@@ -3,6 +3,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -393,28 +395,44 @@ export default function Home() {
           </pre>
         </details>
 
-        {/* Chat box */}
-        <div
-          ref={chatRef}
-          className="h-[50vh] overflow-auto rounded-lg border border-neutral-200 bg-white p-4"
-        >
-          {messages.map((m, i) => (
-            <div key={i} className="mb-3">
-              <div className="text-xs text-neutral-500 mb-1">
-                {m.role === "user" ? "You" : "Assistant"}
-              </div>
-              <div className="whitespace-pre-wrap">{m.content}</div>
-            </div>
-          ))}
-          {messages.length === 0 && (
-            <div className="text-sm text-neutral-500">
-              Ask something or click a quick prompt above.
-            </div>
+    {/* Chat box */}
+    <div
+      ref={chatRef}
+      className="h-[50vh] overflow-auto rounded-lg border border-neutral-200 bg-white p-4"
+    >
+      {messages.map((m, i) => (
+        <div key={i} className="mb-3">
+          <div className="text-xs text-neutral-500 mb-1">
+            {m.role === "user" ? "You" : "Assistant"}
+          </div>
+          {m.role === "assistant" ? (
+          <div className="prose prose-sm max-w-none [&_pre]:bg-neutral-50 [&_pre]:p-3 [&_pre]:rounded-md [&_code]:font-mono">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                a: ({ node, ...props }) => (
+                  <a {...props} target="_blank" rel="noreferrer" />
+                ),
+              }}
+            >
+              {m.content}
+            </ReactMarkdown>
+          </div>
+          ) : (
+            <div className="whitespace-pre-wrap">{m.content}</div>
           )}
         </div>
+      ))}
 
-        {/* Input */}
-        <form
+      {messages.length === 0 && (
+        <div className="text-sm text-neutral-500">
+          Ask something or click a quick prompt above.
+        </div>
+      )}
+    </div>
+
+    {/* Input */}
+    <form
           className="mt-3 flex gap-2"
           onSubmit={(e) => {
             e.preventDefault();
