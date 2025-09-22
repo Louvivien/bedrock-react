@@ -24,6 +24,18 @@ const DEFAULTS = {
 };
 
 export default function Home() {
+  const [fatalError, setFatalError] = useState<string | null>(null);
+  useEffect(() => {
+    const onUnhandled = (e: ErrorEvent) => setFatalError(e.message || String(e));
+    const onRejection = (e: PromiseRejectionEvent) =>
+      setFatalError(e.reason?.message || String(e.reason));
+    window.addEventListener("error", onUnhandled);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onUnhandled);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, []);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -185,14 +197,22 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
+      <div style={{ position: "relative", zIndex: 0, pointerEvents: "auto" }}>
       <div className="mx-auto max-w-3xl px-4 py-6">
         <h1 className="text-2xl font-semibold mb-1">🤖 AI Assistant</h1>
+
+        {fatalError && (
+          <div className="mb-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+            Client error: {fatalError}
+          </div>
+        )}
+
         <p className="text-sm text-neutral-600 mb-4">
           Talk to your Bedrock Agent. Settings are tucked away below.
         </p>
 
         {/* SETTINGS (collapsed) */}
-        <details className="mb-4 rounded-lg border border-neutral-200 bg-white" open={false}>
+        <details className="mb-4 rounded-lg border border-neutral-200 bg-white">
           <summary className="cursor-pointer list-none px-4 py-3 font-medium">
             ⚙️ Settings — collapsed
           </summary>
@@ -343,13 +363,14 @@ export default function Home() {
         {/* Quick prompts */}
         <div className="mb-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
           {quickPrompts.map((q) => (
-            <button
-              key={q}
-              className="rounded-md border bg-white px-3 py-2 text-sm hover:bg-neutral-50"
-              onClick={() => send(q)}
-              disabled={isStreaming}
-            >
-              {q}
+          <button
+            key={q}
+            type="button"
+            className="rounded-md border bg-white px-3 py-2 text-sm hover:bg-neutral-50"
+            onClick={() => send(q)}
+            disabled={isStreaming}
+          >
+                        {q}
             </button>
           ))}
         </div>
@@ -416,6 +437,7 @@ export default function Home() {
           </button>
         </form>
       </div>
+    </div>
     </main>
   );
 }
