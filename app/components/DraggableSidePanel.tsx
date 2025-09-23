@@ -35,30 +35,29 @@ export default function DraggableSidePanel({
   useEffect(() => { maxRef.current = maxWidth; }, [maxWidth]);
   useEffect(() => { sideRef.current = side; }, [side]);
 
-  const handleDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+ const handleDown = useCallback(
+  (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     e.preventDefault();
     draggingRef.current = true;
 
-    const startX = "touches" in e ? e.touches[0].clientX : (e as any).clientX;
-    const startWidth = width;
-
     const onMove = (ev: MouseEvent | TouchEvent) => {
       if (!draggingRef.current) return;
-      const clientX =
-        ev instanceof TouchEvent ? ev.touches[0]?.clientX ?? 0 : (ev as MouseEvent).clientX;
 
-      let newWidth = startWidth;
+      let clientX: number;
+      if (ev instanceof TouchEvent) {
+        clientX = ev.touches[0]?.clientX ?? 0;
+      } else {
+        clientX = (ev as MouseEvent).clientX;
+      }
+
+      let newWidth: number;
       const w = window.innerWidth;
       if (sideRef.current === "right") {
         // Divider is on the LEFT edge of the right panel
-        // Distance from the RIGHT edge becomes the width.
-        const distFromRight = w - clientX;
-        newWidth = distFromRight;
+        newWidth = w - clientX; // distance from right edge
       } else {
-        // side = "left" -> divider is on the RIGHT edge of the left panel
-        // Distance from the LEFT edge becomes the width.
-        const distFromLeft = clientX;
-        newWidth = distFromLeft;
+        // Left side: divider on RIGHT edge of left panel
+        newWidth = clientX; // distance from left edge
       }
 
       newWidth = Math.max(minRef.current, Math.min(maxRef.current, newWidth));
@@ -79,7 +78,10 @@ export default function DraggableSidePanel({
     document.addEventListener("mouseup", onUp);
     document.addEventListener("touchmove", onMove, { passive: false });
     document.addEventListener("touchend", onUp);
-  }, [width]);
+  },
+  []
+);
+
 
   const layout = useMemo(() => {
     const Handle = (
