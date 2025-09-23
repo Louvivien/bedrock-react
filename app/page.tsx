@@ -1,6 +1,7 @@
 // FULL FILE — app/page.tsx
 "use client";
 
+import DraggableSidePanel from "./components/DraggableSidePanel";
 import { useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import ReactMarkdown from "react-markdown";
@@ -198,6 +199,13 @@ export default function Home() {
   }
 
   return (
+  <DraggableSidePanel
+    initialWidth={480}
+    minWidth={320}
+    maxWidth={900}
+    side="right" // <- handle on the LEFT edge of the panel (visible when panel is on the right)
+    className="border-neutral-200"
+  >
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
       <div style={{ position: "relative", zIndex: 0, pointerEvents: "auto" }}>
       <div className="mx-auto max-w-3xl px-4 py-6">
@@ -457,5 +465,7 @@ export default function Home() {
       </div>
     </div>
     </main>
+      </DraggableSidePanel>
+
   );
 }
