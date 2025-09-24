@@ -73,7 +73,7 @@ export default function Home() {
   // -- line after --
 
   // Settings state (collapsed section)
-  const [useOverrides, setUseOverrides] = useState(true);
+  const [useOverrides, setUseOverrides] = useState(false);
   const [jwt, setJwt] = useState("");
   const [customerOuid, setCustomerOuid] = useState(DEFAULTS.customerOuid);
   const [xBrand, setXBrand] = useState(DEFAULTS.xBrand);
@@ -218,13 +218,13 @@ export default function Home() {
         )}
 
         <p className="text-sm text-neutral-600 mb-4">
-          Talk to your Bedrock Agent. Settings are tucked away below.
+          Talk to your Bedrock Agent. 
         </p>
 
         {/* SETTINGS (collapsed) */}
         <details className="mb-4 rounded-lg border border-neutral-200 bg-white">
           <summary className="cursor-pointer list-none px-4 py-3 font-medium">
-            ⚙️ Settings — collapsed
+            ⚙️ Settings 
           </summary>
           <div className="px-4 pb-4">
             <p className="text-xs text-neutral-500 mb-3">
@@ -418,9 +418,7 @@ export default function Home() {
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                a: ({ node, ...props }) => (
-                  <a {...props} target="_blank" rel="noreferrer" />
-                ),
+                a: (props) => <a {...props} target="_blank" rel="noreferrer" />,
               }}
             >
               {m.content}
