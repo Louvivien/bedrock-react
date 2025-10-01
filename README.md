@@ -135,8 +135,7 @@ These are intentionally short and generic so the agent can decide which tools to
 
 ---
 
-## 🧩 Backend/API Notes (generic)
-
+## 🧩 Backend/API Notes 
 If your agent calls your domain endpoints, you’ll typically rely on a **customer snapshot/DTO** for most account questions. A reference spec would define:
 
 * **Get customer data (DTO)** — returns a consolidated customer view; avoid re-calling if it’s already in context.
@@ -310,10 +309,7 @@ A layered prompt strategy so answers are **actionable, safe, and terse** for ope
 * Stay under a strict token cap by preferring **summary + last 3–4 turns** instead of full history
 * Evict stale blobs (full JSON) after extracting only needed fields
 
-### Style constraints (examples)
 
-* **Do**: “The customer has one active line and two unpaid invoices (June, July). Recommend sending a payment link and enabling bill smoothing.”
-* **Don’t**: “I called the `getInvoices` API and then `createPaymentLink`.”
 
 ### Orchestration skeleton
 
