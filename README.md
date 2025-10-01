@@ -193,7 +193,7 @@ MIT
 
 
 
-## 🧠 AWS Bedrock Agent Lambda (override & tools)
+## 🧠 AWS Bedrock Agent Lambda 
 
 The server route calls a Bedrock **Agent**. That agent is fronted by a lightweight **Lambda** (“override lambda”) that standardizes auth, headers, and tool calls to your domain APIs.
 
@@ -320,19 +320,7 @@ The app uses a layered prompt strategy so answers are **actionable, safe, and te
 - Keep tools invisible in the final message; no implementation details.
 ```
 
-### Example: Post-processor goals
 
-* Normalize money/units.
-* Collapse repetitive fields (e.g., product lists) into **readable bullets**.
-* Highlight **risks** (unpaid bills, churn flags, throttling).
-* End with **action suggestions** (send payment link, propose booster, open ticket).
-
-### Guardrails you can tune
-
-* Max answer length and structure (bullets, subsections).
-* “Ask-only-if-blocked” rule for parameters.
-* Allowed actions list (e.g., goodwill size caps, safe retries).
-* PII redaction patterns for logs.
 
 ---
 
