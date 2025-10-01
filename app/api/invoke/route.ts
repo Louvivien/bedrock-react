@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import {
   BedrockAgentRuntimeClient,
   InvokeAgentCommand,
+  InvokeAgentCommandInput,
   InvokeAgentCommandOutput,
 } from "@aws-sdk/client-bedrock-agent-runtime";
 
@@ -15,20 +16,21 @@ type Payload = {
   attrs?: Record<string, string>;
 };
 
-type SessionStateShape = {
+type SessionState = {
   sessionAttributes?: Record<string, string>;
   promptSessionAttributes?: Record<string, string>;
 };
 
-export async function POST(req: NextRequest): Promise<Response> {
-  const body: Payload = await req.json();
-  const { prompt, sessionId, useOverrides, attrs = {} } = body;
+export async function POST(req: NextRequest) {
+  const { prompt, sessionId, useOverrides, attrs = {} } = (await req.json()) as Payload;
 
   const region = process.env.AWS_REGION || "eu-west-1";
   const client = new BedrockAgentRuntimeClient({ region });
 
   // Build session state (sticky + turn) or minimal baseline when OFF
-  const sessionState: SessionStateShape = {};
+  // -- line before --
+  const sessionState: SessionState = {};
+  // -- line after --
   if (useOverrides && Object.keys(attrs).length > 0) {
     sessionState.sessionAttributes = attrs;       // sticky across turns
     sessionState.promptSessionAttributes = attrs; // visible to current turn/tools
@@ -42,11 +44,9 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const streamFinal =
     (process.env.STREAM_FINAL_RESPONSE ?? "true").toLowerCase() === "true";
-  const guardrailInterval = Number(
-    process.env.APPLY_GUARDRAIL_INTERVAL ?? "50"
-  );
+  const guardrailInterval = Number(process.env.APPLY_GUARDRAIL_INTERVAL ?? "50");
 
-  const cmd = new InvokeAgentCommand({
+  const input: InvokeAgentCommandInput = {
     agentId: process.env.AGENT_ID!,
     agentAliasId: process.env.AGENT_ALIAS_ID!,
     sessionId,
@@ -57,8 +57,11 @@ export async function POST(req: NextRequest): Promise<Response> {
       streamFinalResponse: streamFinal,
     },
     sessionState,
-  });
+  };
 
+  const cmd = new InvokeAgentCommand(input);
+
+  // Stream Bedrock chunks -> HTTP response
   const textDecoder = new TextDecoder();
 
   const stream = new ReadableStream({
@@ -73,9 +76,10 @@ export async function POST(req: NextRequest): Promise<Response> {
         }
         // -- line after --
       } catch (err: unknown) {
-        const msg =
-          err instanceof Error ? err.message : `Unexpected error: ${String(err)}`;
-        controller.enqueue(`\n[error] ${msg}`);
+        // -- line before --
+        const message = err instanceof Error ? err.message : String(err);
+        // -- line after --
+        controller.enqueue(`\n[error] ${message}`);
       } finally {
         controller.close();
       }

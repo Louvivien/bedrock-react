@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+
 type Msg = { role: "user" | "assistant"; content: string };
 
 type DebugPayload = {
@@ -23,7 +24,7 @@ const DEFAULTS = {
   lang: process.env.NEXT_PUBLIC_DEFAULT_LANG ?? "en",
   customerOuid:
     process.env.NEXT_PUBLIC_DEFAULT_CUSTOMER_OUID ??
-    "1E5A1F564E180BD3EBF02D7D5007DB28",
+    "",
 };
 
 export default function Home() {
@@ -42,6 +43,7 @@ export default function Home() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+
 
   // Session id persisted per tab
   const [sessionId, setSessionId] = useState<string>("");
@@ -79,6 +81,22 @@ export default function Home() {
   const [xBrand, setXBrand] = useState(DEFAULTS.xBrand);
   const [xChannel, setXChannel] = useState(DEFAULTS.xChannel);
   const [lang, setLang] = useState(DEFAULTS.lang);
+  const [maxTokens, setMaxTokens] = useState<number>(300);
+
+    // timing
+  const [elapsedMs, setElapsedMs] = useState<number | null>(null);
+  const tickRef = useRef<number | null>(null);
+  const t0Ref = useRef<number | null>(null);
+
+  useEffect(() => {
+  return () => {
+    if (tickRef.current) {
+      clearInterval(tickRef.current);
+      tickRef.current = null;
+    }
+  };
+}, []);
+
 
   const [billingAccountOuid, setBA] = useState("");
   const [parentOuid, setParent] = useState("");
@@ -114,6 +132,8 @@ export default function Home() {
     if (xBrand) attrs.xBrand = xBrand;
     if (xChannel) attrs.xChannel = xChannel;
 
+    
+
     // goodwill (optional)
     if (billingAccountOuid) attrs.billingAccountOuid = billingAccountOuid;
     if (parentOuid) attrs.parentOuid = parentOuid;
@@ -139,6 +159,18 @@ export default function Home() {
     const idx = messages.length + 1;
     setMessages((m) => [...m, { role: "assistant", content: "" }]);
     setIsStreaming(true);
+
+    // start timing
+    t0Ref.current = performance.now();
+    setElapsedMs(0);
+    if (tickRef.current) clearInterval(tickRef.current);
+    tickRef.current = window.setInterval(() => {
+      if (t0Ref.current != null) {
+        setElapsedMs(performance.now() - t0Ref.current);
+      }
+    }, 100);
+
+
 
     const attrs = buildAttrs();
 
@@ -194,7 +226,16 @@ export default function Home() {
         return copy;
       });
     } finally {
-      setIsStreaming(false);
+      
+        if (tickRef.current) {
+          clearInterval(tickRef.current);
+          tickRef.current = null;
+        }
+        if (t0Ref.current != null) {
+          setElapsedMs(performance.now() - t0Ref.current);
+          t0Ref.current = null;
+        }
+        setIsStreaming(false);
     }
   }
 
@@ -404,6 +445,22 @@ export default function Home() {
         </details>
 
     {/* Chat box */}
+    {/* Status / loading */}
+{isStreaming && (
+  <div className="mb-2 flex items-center gap-2 text-sm text-neutral-700">
+    <span
+      className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-900"
+      aria-hidden
+    />
+    <span>Processing… {elapsedMs != null ? (elapsedMs / 1000).toFixed(1) : "0.0"}s</span>
+  </div>
+)}
+
+{!isStreaming && elapsedMs != null && (
+  <div className="mb-2 text-xs text-neutral-500">
+    Last response took {(elapsedMs / 1000).toFixed(2)}s
+  </div>
+)}
     <div
       ref={chatRef}
       className="h-[50vh] overflow-auto rounded-lg border border-neutral-200 bg-white p-4"
