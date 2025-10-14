@@ -19,7 +19,7 @@ type DebugPayload = {
 };
 
 const DEFAULTS = {
-  xBrand: process.env.NEXT_PUBLIC_DEFAULT_X_BRAND ?? "DEMO-DEMO",
+  xBrand: process.env.NEXT_PUBLIC_DEFAULT_X_BRAND ?? "",
   xChannel: process.env.NEXT_PUBLIC_DEFAULT_X_CHANNEL ?? "AGENT_TOOL",
   lang: process.env.NEXT_PUBLIC_DEFAULT_LANG ?? "en",
   customerOuid:

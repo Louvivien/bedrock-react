@@ -1,0 +1,461 @@
+openapi: 3.0.3
+
+info:
+  title: triPica Agent API (Lambda-injected auth/headers)
+  version: "0.3.5"
+  description: >
+    # Product note:
+    # Agent-facing API. Calls are fronted by a Lambda that (a) injects headers/JWT,
+    # (b) rewrites some routes (e.g., default customerOuid), and (c) enriches DTOs
+    # with computed fields & snapshots while keeping payloads within token budgets.
+    Agent-facing API definition. The Lambda injects headers/JWT and can resolve
+    defaults (e.g., default customerOuid).
+
+servers:
+  - url: https://api-demo.tparici.com
+
+# -----------------------------
+# Assistant intents (vendor ext)
+# - These power "quick prompts" in the agent UI.
+# - Each intent maps natural language → operationId (primary) and a fallback.
+# - x-autoInvoke=true: the assistant can run it directly without asking for extra inputs.
+# -----------------------------
+x-intents:
+  - name: "🧾 Summarize account / get account summary"
+    utterances:
+      - "get account summary"
+      - "summarize account"
+      - "give me the account summary"
+      - "show account overview"
+    routesTo:
+      operationId: summarizeAccount               # No OUID → Lambda injects default OUID
+      fallbackOperationId: summarizeAccountById   # If OUID is known
+      notes: >
+        Prefer the default DTO (no parameters). If a DTO is already present for
+        the same customer, reuse it instead of re-calling.
+    x-autoInvoke: true
+
+  - name: "🎟️ Review tickets; propose next steps"
+    # Parking note: temporarily routes to summarizeAccount until Zendesk path is enabled.
+    utterances:
+      - "review tickets"
+      - "show latest support conversation"
+      - "support history"
+      - "tickets and next steps"
+    routesTo:
+      operationId: summarizeAccount
+      fallbackOperationId: summarizeAccountById
+    x-notes: "Zendesk endpoint parked; route temporarily reuses account summary."
+
+  - name: "💳 Check billing & payments"
+    # Same DTO route; the Lambda computes payment/line averages in _computed/_snapshot.
+    utterances:
+      - "check billing"
+      - "show payments"
+      - "billing & payments"
+    routesTo:
+      operationId: summarizeAccount
+      fallbackOperationId: summarizeAccountById
+    x-autoInvoke: true
+
+  - name: "📊 Analyze usage; recommend plan/booster"
+    # Fronts a summary but downstream reasoning uses DTO + computed spend per line.
+    utterances:
+      - "analyze usage"
+      - "recommend plan"
+      - "recommend booster"
+    routesTo:
+      operationId: summarizeAccount
+      fallbackOperationId: summarizeAccountById
+    x-autoInvoke: true
+
+  - name: "🚨 Spot risks; suggest actions"
+    # Same fetch; the assistant interprets flags in _snapshot.flags (idInvalid, task errors).
+    utterances:
+      - "spot risks"
+      - "suggest actions"
+      - "health of account"
+    routesTo:
+      operationId: summarizeAccount
+      fallbackOperationId: summarizeAccountById
+    x-autoInvoke: true
+
+  # NEW: Natural trigger for goodwill
+  - name: "⚡ Give 2GB goodwill"
+    # Minimal path to create a DATA_CREDIT productOrder.
+    utterances:
+      - "give 2gb goodwill"
+      - "add 2gb goodwill"
+      - "grant 2gb data"
+      - "goodwill 2gb"
+      - "credit 2gb data"
+      - "offer 2gb data"
+    routesTo:
+      operationId: addDataGoodwillTest            # Test entrypoint; Lambda composes body if missing
+    x-autoInvoke: true
+    x-defaults:
+      invokeWithoutParameters: true               # Allows “one-click” trigger
+    x-bodyDefaults:
+      sizeGb: 2
+      benefitType: DATA_CREDIT
+    x-sessionAttributes:
+      preferCustomerOuid: true   # If session has customerOuid, use it
+    x-notes: >
+      If no body is provided, the Lambda composes a 2GB DATA_CREDIT and will attempt
+      to resolve parent/billing account via msisdn or defaults (session → env).
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        # Usage:
+        # - In demos, the Lambda can inject a STATIC_JWT automatically.
+        # - In production, pass a real per-request Bearer token.
+        Standard Bearer token (JWT). In practice, the Lambda may inject Authorization
+        automatically if omitted.
+
+  parameters:
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      description: "Response language to request from the API (e.g., 'en' or 'fr')."
+      schema:
+        type: string
+        default: en
+
+    XBrand:
+      name: X-Brand
+      in: header
+      required: false
+      description: "Brand identifier header (e.g., 'DEMO-DEMO'). Used for multi-tenant brand routing."
+      schema:
+        type: string
+        default: DEMO-DEMO
+
+    XChannel:
+      name: X-Channel
+      in: header
+      required: false
+      description: >
+        # Important:
+        # DTO endpoints often expect X-Channel='mobile-app'. The Lambda may
+        # override incoming values accordingly to improve cache/happy path.
+        Channel header indicating the caller context. The Lambda may override to
+        'mobile-app' for DTO routes.
+      schema:
+        type: string
+        default: mobile-app
+        enum: [AGENT_TOOL, mobile-app, agent-tool]
+
+    Authorization:
+      name: Authorization
+      in: header
+      required: false
+      description: >
+        Bearer JWT for the agent/user (format: 'Bearer eyJ...'). If omitted, the
+        backend may use an env-provided STATIC_JWT.
+      schema:
+        type: string
+
+    CustomerOuid:
+      name: customerOuid
+      in: path
+      required: true
+      description: "Customer OUID to retrieve (32-character hex-like identifier)."
+      schema:
+        type: string
+      example: "1E5A1F564E180BD3EBF02D7D5007DB28"
+
+  schemas:
+    DtoCustomer:
+      type: object
+      description: >
+        # Enrichment:
+        # Lambda may add:
+        # - _computed: { activeLineCount, avgMonthly, currency, … }
+        # - _snapshot: { tickets, nextPayments, flags } + _snapshotSha1 for change tracking.
+        Customer DTO payload. Exact structure depends on backend. Lambda may enrich
+        with a `_computed` block (e.g., average line value) and a small `_snapshot`.
+      additionalProperties: true
+
+    SearchIndividualsResponse:
+      type: object
+      description: "Search results for individuals."
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        count:
+          type: integer
+          description: "Total number of results returned in this response."
+      additionalProperties: false
+
+    GoodwillRequest:
+      type: object
+      description: "Request body to add a data goodwill credit."
+      # PM note: benefitType is fixed to DATA_CREDIT via default; sizeGb is the primary input.
+      required: [sizeGb]
+      properties:
+        customerOuid:
+          type: string
+          description: "Target customer OUID for the goodwill credit."
+        billingAccountOuid:
+          type: string
+          description: "Billing Account OUID to associate the goodwill."
+        parentOuid:
+          type: string
+          description: "Parent product/subscription OUID (relationship = PARENT) for catalog scoping."
+        offeringOuid:
+          type: string
+          description: "Offering OUID for the goodwill item."
+        specOuid:
+          type: string
+          description: "Specification OUID for the goodwill item."
+        benefitType:
+          type: string
+          enum: [DATA_CREDIT]
+          default: DATA_CREDIT
+          description: "Type of goodwill. Defaults to 'DATA_CREDIT'."
+        sizeGb:
+          type: integer
+          minimum: 1
+          default: 2
+          description: "Size of the data goodwill to add, in GB."
+        reason:
+          type: string
+          description: "Reason code/label for the goodwill credit."
+          default: boosterOrPassRefund
+        msisdn:
+          type: string
+          description: >
+            Optional line MSISDN. If present (and parent/billing not provided), the Lambda
+            will fetch the DTO for the (session/env) customer and auto-resolve the active
+            subscription (parentOuid) and billingAccountOuid.
+      additionalProperties: false
+      oneOf:
+        - required: [msisdn]          # Path A: Minimal + msisdn → Lambda resolves parent/BA
+        - required: [customerOuid]    # Path B: Caller provides the target customer
+      x-notes: >
+        The Lambda accepts either a minimal body (just sizeGb, or msisdn + sizeGb) or a
+        fully specified payload with customerOuid + parentOuid + billingAccountOuid.
+        If no body at all is provided, it composes a 2GB DATA_CREDIT using defaults.
+
+    Error:
+      type: object
+      description: "Error payload."
+      properties:
+        message:
+          type: string
+        code:
+          type: integer
+      additionalProperties: true
+
+paths:
+  /api/private/v1/agent/individual/familyName/{familyName}:
+    get:
+      operationId: agentSearchIndividualsByFamilyName
+      summary: "Find customers by family name (search only)"
+      description: >
+        # Intent guard:
+        # For search/lookup only. Do not use this route to build account summaries.
+        INTENT: Search only. This endpoint helps locate a customer record by family
+        name. Do NOT use for account summaries.
+      tags: [Search]
+      x-intent-phrases:
+        - "search customer"
+        - "find by family name"
+        - "lookup contact"
+      parameters:
+        - name: familyName
+          in: path
+          required: true
+          description: "Family name (surname) prefix to search (normalized, case-insensitive)."
+          schema:
+            type: string
+          example: "RICHAUD"
+        - $ref: "#/components/parameters/AcceptLanguage"
+        - $ref: "#/components/parameters/XBrand"
+        - $ref: "#/components/parameters/XChannel"
+        - $ref: "#/components/parameters/Authorization"
+      responses:
+        "200":
+          description: "OK — matching individuals."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchIndividualsResponse"
+        "204":
+          description: "No matches found."
+        "403":
+          description: "Forbidden."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/private/v1/agent/customer/customerDto/{customerOuid}:
+    get:
+      operationId: summarizeAccountById
+      summary: "🧾 Summarize account (with customer OUID)"
+      description: >
+        # When you already have an OUID:
+        # Fast path to fetch the DTO for a specific customer and let the Lambda enrich it.
+        INTENT: Summarize account / get account summary when the customer OUID is known.
+        Calls dtoCustomerService.computeDtoCustomer for the provided OUID.
+      tags: ["Account Summary"]
+      parameters:
+        - $ref: "#/components/parameters/CustomerOuid"
+        - $ref: "#/components/parameters/AcceptLanguage"
+        - $ref: "#/components/parameters/XBrand"
+        - $ref: "#/components/parameters/XChannel"
+        - $ref: "#/components/parameters/Authorization"
+      responses:
+        "200":
+          description: "OK — DtoCustomer payload."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DtoCustomer"
+        "204":
+          description: "No content / not found."
+        "403":
+          description: "Forbidden."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/private/v1/agent/customer/customerDto:
+    get:
+      operationId: summarizeAccount
+      summary: "🧾 Summarize account (no OUID provided)"
+      deprecated: false
+      description: >
+        # Default path:
+        # If caller doesn't pass OUID, the Lambda uses DEFAULT_CUSTOMER_OUID/STATIC_JWT
+        # and rewrites to /customerDto/{customerOuid}. Results can be cached briefly
+        # for speed and are trimmed/enriched for assistant use.
+        INTENT: Summarize account / get account summary / account overview / check billing & payments /
+        analyze usage / spot risks. If no OUID is provided, the Lambda uses DEFAULT_CUSTOMER_OUID and
+        STATIC_JWT from environment and rewrites internally to /customerDto/{customerOuid}.
+        If a DTO is already present for the same customer, reuse it instead of re-calling.
+      tags: ["Account Summary"]
+      x-intent-phrases:
+        - "🧾 Summarize account"
+        - "get account summary"
+        - "check billing & payments"
+        - "analyze usage"
+        - "spot risks"
+        - "account overview"
+      x-defaults:
+        requiresUserInput: false
+        invokeWithoutParameters: true
+      parameters:
+        - $ref: "#/components/parameters/AcceptLanguage"
+        - $ref: "#/components/parameters/XBrand"
+        - $ref: "#/components/parameters/XChannel"
+        - $ref: "#/components/parameters/Authorization"
+      responses:
+        "200":
+          description: "OK — DtoCustomer payload."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DtoCustomer"
+        "204":
+          description: "No content / not found."
+        "403":
+          description: "Forbidden."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/private/v1/agent/test/addDataGoodwill:
+    post:
+      operationId: addDataGoodwillTest
+      summary: "Add data goodwill (DATA_CREDIT)"
+      description: >
+        # One-click goodwill:
+        # Minimal body (or none). Lambda composes productOrder (2GB by default),
+        # can auto-resolve parent/billing from msisdn, and can verify via DTO fetch.
+        Adds a data goodwill credit to the customer/account. Caller can supply IDs or rely on session/env defaults.
+        If no body is provided, a 2GB DATA_CREDIT with reason 'boosterOrPassRefund' is composed automatically.
+        If msisdn is provided (and parent/billing not provided), the Lambda will auto-resolve the active line.
+      tags: ["Goodwill"]
+      parameters:
+        - $ref: "#/components/parameters/AcceptLanguage"
+        - $ref: "#/components/parameters/XBrand"
+        - $ref: "#/components/parameters/XChannel"
+        - $ref: "#/components/parameters/Authorization"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoodwillRequest"
+            examples:
+              minimalTriggerNoBody:
+                summary: Trigger via intent (no body)
+                description: Invoked by “give 2gb goodwill”; Lambda composes 2GB DATA_CREDIT using defaults.
+                value: {}
+              msisdnOnly:
+                summary: Minimal with MSISDN
+                value:
+                  sizeGb: 2
+                  msisdn: "+33611223344"
+              fullySpecified:
+                summary: Explicit triplet + catalog
+                value:
+                  customerOuid: "1E5A1F564E180BD3EBF02D7D5007DB28"
+                  billingAccountOuid: "C4B86DD15A126EBE504D686320E7334D"
+                  parentOuid: "96EDE5D31138E5CD3445601C53E75B7E"
+                  offeringOuid: "47F2CE64A772B870D62F5BD19ED02196"
+                  specOuid: "8B3C73498520F7048BC00F449DBAE447"
+                  benefitType: "DATA_CREDIT"
+                  sizeGb: 2
+                  reason: "boosterOrPassRefund"
+      responses:
+        "200":
+          description: "Goodwill result (Lambda-wrapped backend response)."
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "204":
+          description: "Added (no content)."
+        "400":
+          description: "Bad Request (e.g., invalid catalog relationship or IDs)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Forbidden."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: "Internal error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+# Optional parking area for disabled/archived definitions without affecting validity.
+x-archive:
+  intentsDisabled:
+    - name: "🎟️ Review tickets; propose next steps"
+      routesTo: zendeskEmailConversation
+      reason: "Pending scopes / parked"
+  pathsDisabled:
+    - path: "/api/private/v1/zendesk/email/conversation"
+      reason: "Feature parked; keep as comment in YAML to avoid schema breakage"
