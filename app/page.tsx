@@ -19,9 +19,6 @@ type DebugPayload = {
 };
 
 const DEFAULTS = {
-  xBrand: process.env.NEXT_PUBLIC_DEFAULT_X_BRAND ?? "",
-  xChannel: process.env.NEXT_PUBLIC_DEFAULT_X_CHANNEL ?? "AGENT_TOOL",
-  lang: process.env.NEXT_PUBLIC_DEFAULT_LANG ?? "en",
   customerOuid:
     process.env.NEXT_PUBLIC_DEFAULT_CUSTOMER_OUID ??
     "",
@@ -78,9 +75,6 @@ export default function Home() {
   const [useOverrides, setUseOverrides] = useState(false);
   const [jwt, setJwt] = useState("");
   const [customerOuid, setCustomerOuid] = useState(DEFAULTS.customerOuid);
-  const [xBrand, setXBrand] = useState(DEFAULTS.xBrand);
-  const [xChannel, setXChannel] = useState(DEFAULTS.xChannel);
-  const [lang, setLang] = useState(DEFAULTS.lang);
   const [maxTokens, setMaxTokens] = useState<number>(300);
 
     // timing
@@ -97,14 +91,6 @@ export default function Home() {
   };
 }, []);
 
-
-  const [billingAccountOuid, setBA] = useState("");
-  const [parentOuid, setParent] = useState("");
-  const [offeringOuid, setOffering] = useState("");
-  const [specOuid, setSpec] = useState("");
-  const [msisdn, setMsisdn] = useState("");
-  const [goodwillSizeGb, setSize] = useState<number>(2);
-  const [goodwillReason, setReason] = useState("boosterOrPassRefund");
 
   const [lastPayload, setLastPayload] = useState<DebugPayload | null>(null);
 
@@ -126,25 +112,6 @@ export default function Home() {
     const attrs: Record<string, string> = {};
     if (jwt) attrs.jwt = jwt;
     if (customerOuid) attrs.customerOuid = customerOuid;
-
-    // call context
-    if (lang) attrs.lang = lang;
-    if (xBrand) attrs.xBrand = xBrand;
-    if (xChannel) attrs.xChannel = xChannel;
-
-    
-
-    // goodwill (optional)
-    if (billingAccountOuid) attrs.billingAccountOuid = billingAccountOuid;
-    if (parentOuid) attrs.parentOuid = parentOuid;
-    if (offeringOuid) attrs.offeringOuid = offeringOuid;
-    if (specOuid) attrs.specOuid = specOuid;
-    if (msisdn) attrs.msisdn = msisdn;
-
-    // always include goodwill sizing if overrides enabled
-    attrs.goodwillSizeGb = String(Math.max(1, Number(goodwillSizeGb || 2)));
-    if (goodwillReason) attrs.goodwillReason = goodwillReason;
-
     return attrs;
   }
 
@@ -175,13 +142,7 @@ export default function Home() {
     const attrs = buildAttrs();
 
     // Build baseline prompt attrs when overrides are OFF
-    const baselinePromptAttrs = !useOverrides
-      ? {
-          xBrand: DEFAULTS.xBrand,
-          xChannel: DEFAULTS.xChannel,
-          lang: DEFAULTS.lang,
-        }
-      : null;
+    const baselinePromptAttrs = null;
 
     const payload: DebugPayload = {
       prompt,
@@ -269,7 +230,7 @@ export default function Home() {
           </summary>
           <div className="px-4 pb-4">
             <p className="text-xs text-neutral-500 mb-3">
-              Toggle overrides to send your params as session attributes; otherwise minimal defaults are sent as prompt attributes.
+              Toggle overrides to send your params as session attributes; otherwise no extra attributes are sent.
             </p>
 
             <label className="flex items-center gap-2 mb-3">
@@ -304,7 +265,8 @@ export default function Home() {
                 placeholder={DEFAULTS.customerOuid}
               />
             </div>
-
+            {/* Call context inputs disabled per request */}
+            {/*
             <hr className="my-3" />
             <h3 className="font-semibold mb-2">🌐 Call context</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -408,6 +370,7 @@ export default function Home() {
                 />
               </div>
             </div>
+            */}
           </div>
         </details>
 
